@@ -19,6 +19,7 @@ use sha1::{Sha1, Digest};
 use hex::ToHex;
 use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
 use std::net::SocketAddr;
+use std::time::{UNIX_EPOCH, SystemTime};
 
 mod js;
 mod aliyun;
@@ -27,7 +28,7 @@ mod aliyun;
 struct WhitelistMeJson {
     name: String,
     auth: String,
-    ts: String
+    ts: u64
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +38,7 @@ struct AppState {
     aliyun_access_secret: String,
     aliyun_region_id: String,
     aliyun_vpc_sg_id: String,
+    allow_time_diff: u64
 }
 
 type AllowUserList = HashMap<String, String>;
@@ -83,7 +85,12 @@ async fn white_list_me(
     // try get user from allowed list key
     let allowed_user = state.allow_user_list.get(&input.name);
     if allowed_user.is_none() {
-        return (StatusCode::FORBIDDEN, "not allowed".to_string());
+        return (StatusCode::UNAUTHORIZED, "Not allowed".to_string());
+    }
+    // check timestamp is valid, allow +-allow_time_diff seconds
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    if now > input.ts + state.allow_time_diff || now < input.ts - state.allow_time_diff {
+        return (StatusCode::UNAUTHORIZED, "Timestamp is not valid".to_string());
     }
     let tmp_arr = format!("{}{}{}", &input.name, allowed_user.unwrap(), &input.ts);
     let mut hasher = Sha1::new();
@@ -93,7 +100,7 @@ async fn white_list_me(
     let hex_str = tmp_str_hashed.as_slice().encode_hex::<String>();
     // println!("hashed: {}", &hex_str);
     if hex_str != input.auth {
-        return (StatusCode::FORBIDDEN, "not allowed".to_string());
+        return (StatusCode::UNAUTHORIZED, "Not allowed".to_string());
     }
     // get user ip
     //println!("{insecure_ip:?} {secure_ip:?}");
@@ -102,6 +109,8 @@ async fn white_list_me(
         &state.aliyun_access_secret, 
         &state.aliyun_region_id
     );
+    // check ip is in whitelist
+    let whitelist = aly.get_whitelist(&state.aliyun_vpc_sg_id).await;
     let is_success_add = aly.add_whitelist(
         &state.aliyun_vpc_sg_id,
         &secure_ip.0.to_string()
@@ -133,6 +142,7 @@ async fn main() -> Result<()>{
     let aliyun_vpc_sg_id = env::var("ALIYUN_VPC_SG_ID").expect("ALIYUN_VPC_SG_ID is not set");
     let aliyun_region_id = env::var("ALIYUN_REGION_ID").unwrap_or("cn-zhangjiakou".to_string());
     let allow_user_pass = env::var("ALLOW_USER_PASS").unwrap_or("{}".to_string());
+    let allow_time_diff = env::var("ALLOW_TIME_DIFF").unwrap_or("300".to_string()).parse::<u64>().unwrap();
     
     let allow_user_list: AllowUserList = serde_json::from_str(&allow_user_pass)?;
 
@@ -142,6 +152,7 @@ async fn main() -> Result<()>{
         aliyun_access_secret,
         aliyun_region_id,
         aliyun_vpc_sg_id,
+        allow_time_diff,
     };
 
     println!("Listening on http://{}", listen.as_str());

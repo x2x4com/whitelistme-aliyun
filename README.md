@@ -28,5 +28,7 @@
 部署这个服务，并运行
 
 ```
-ALIYUN_ACCESS_KEY=abc ALIYUN_ACCESS_SECRET=xyz RUST_LOG=debug ALLOW_USER_PASS='{"aaa":"bbb", "x2x4": "1234"}' ALIYUN_VPC_SG_ID="sg-id"
+ALIYUN_ACCESS_KEY=abc ALIYUN_ACCESS_SECRET=xyz RUST_LOG=debug ALLOW_USER_PASS='{"aaa":"bbb", "x2x4": "1234"}' ALIYUN_VPC_SG_ID="sg-id" cargo run
 ```
+
+访问 http://your-ip:3000/

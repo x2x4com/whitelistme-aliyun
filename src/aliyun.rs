@@ -1,25 +1,24 @@
-#![allow(dead_code, unreachable_code, unused_variables, unused_imports)]
+#![allow(dead_code, unreachable_code, unused_variables)]
 use anyhow::Result;
+use aliyun_openapi_core_rust_sdk::client::rpc::RPClient;
 
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AliyunCFG {
-    access_key: String,
-    access_secret: String,
+    rpc_client: RPClient,
     region_id: String,
 }
+
 
 impl AliyunCFG {
     pub fn new(access_key: &str, access_secret: &str, region_id: &str) -> Self {
         Self {
-            access_key: access_key.to_string(),
-            access_secret: access_secret.to_string(),
+            rpc_client: RPClient::new(access_key, access_secret, "https://ecs.aliyuncs.com/"),
             region_id: region_id.to_string(),
         }
     }
+
     pub async fn add_whitelist(&self, sg_id: &str, ip: &str) -> Result<()> {
         
-        println!("{} {} {} {} {ip:?}", self.access_key, self.access_secret, self.region_id, sg_id);
         if ip == "127.0.0.1" {
             return Ok(());
         }
@@ -31,8 +30,15 @@ impl AliyunCFG {
         todo!("Call aliyun api to del ip from whitelist")
     }
 
-    pub async fn get_whitelist(&self, sg_id: &str) -> Result<()> {
-        todo!("Call aliyun api to get whitelist")
+    pub async fn get_whitelist(&self, sg_id: &str) -> Result<String> {
+        let response = &self.rpc_client.clone()
+            .version("2014-05-26")
+            .get("DescribeSecurityGroupAttribute")
+            .query([("RegionId", self.region_id.as_str()), ("SecurityGroupId", sg_id)])
+            .text()
+            .await?;
+        println!("{}", response);
+        Ok(response.to_owned())
     }
 
     pub async fn modify_sg(&self, sg_id: &str, sg_name: &str) -> Result<()> {
