@@ -21,6 +21,7 @@ use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
 use std::net::SocketAddr;
 
 mod js;
+mod aliyun;
 
 #[derive(Deserialize, Debug)]
 struct WhitelistMeJson {
@@ -46,7 +47,7 @@ async fn white_list_me_form() -> Html<String> {
         <!doctype html>
         <html>
             <head>
-                <script>{}</script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
             </head>
             <body>
                 <div id="form_body">
@@ -67,7 +68,7 @@ async fn white_list_me_form() -> Html<String> {
             </body>
             <script>{}</script>
         </html>
-        "#, js::CRYPTO_JS, js::SUBMIT)
+        "#, js::SUBMIT)
     )
 }
 
@@ -96,10 +97,12 @@ async fn white_list_me(
     }
     // get user ip
     //println!("{insecure_ip:?} {secure_ip:?}");
-    let is_success_add = add_whitelist(
+    let aly = aliyun::AliyunCFG::new(
         &state.aliyun_access_key, 
         &state.aliyun_access_secret, 
-        &state.aliyun_region_id,
+        &state.aliyun_region_id
+    );
+    let is_success_add = aly.add_whitelist(
         &state.aliyun_vpc_sg_id,
         &secure_ip.0.to_string()
     ).await;
@@ -107,15 +110,6 @@ async fn white_list_me(
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string());
     }
     (StatusCode::OK, "OK".to_string())
-}
-
-async fn add_whitelist(access_key: &str, access_secret: &str, region_id: &str, sg_id: &str, ip: &str) -> Result<()> {
-    println!("{access_key:?} {access_secret:?} {region_id:?} {sg_id:?} {ip:?}");
-    if ip == "127.0.0.1" {
-        return Ok(());
-    }
-    todo!("Call aliyun api to add ip to whitelist");
-    Ok(())
 }
 
 #[tokio::main]
