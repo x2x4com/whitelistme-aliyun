@@ -245,18 +245,26 @@ impl AliyunCFG {
         // 不存在的添加
         let mut existed = Vec::new();
         let _: Vec<_> = perms.iter().map(|p| {
-            existed.push(format!("{}:{}", ip, p.port_range));
+            existed.push(format!("{}:{}:{}", ip, p.ip_protocol ,p.port_range));
         }).collect();
         println!("existed: {existed:?}");
         let mut permissions = Vec::new();
-        for port in port_range {
+        for port_str in port_range {
+            let port_str_split  = port_str.split(":");
+            let port_split: Vec<&str> = port_str_split.collect();
+            if port_split.len() < 2 {
+                println!("port range format error, TCP|UDP:port_start/port_end");
+                continue;
+            }
+            let port = port_split[1].to_string();
+            let ip_protocol = port_split[0].to_string().to_uppercase();
             for perm in &perms {
                 if perm.is_match(ip, &port) {
                     // 有，更新
                     res_str += &format!("Update {}:{} {} ", ip, port, self.update_whitelist(sg_id, ip, perm.clone(), duration).await?);
                 } else {
                     // 没有，添加
-                    let ex = format!("{ip}:{port}");
+                    let ex = format!("{ip}:{ip_protocol}:{port}");
                     if !existed.contains(&ex) {
                         res_str += &format!("Add {ex} ");
                         let mut p = SecurityGroupPermission::new(
@@ -264,7 +272,7 @@ impl AliyunCFG {
                             "",
                             ip,
                             &port,
-                            "TCP"
+                            &ip_protocol
                         );
                         p.set_expired(duration);
                         permissions.push(p);

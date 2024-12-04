@@ -143,7 +143,7 @@ async fn main() -> Result<()>{
     let allow_time_diff = env::var("ALLOW_TIME_DIFF").unwrap_or("300".to_string()).parse::<u64>().unwrap();
     // let allow_ports: Vec<u16> = env::var("ALLOW_PORTS").unwrap_or("22".to_string()).split(",").into_iter().map(|s| s.parse::<u16>().unwrap()).collect();
     // todo 要考虑一下 IpProtocol, 应该改成TCP:PORT/PORT
-    let allow_port_range: Vec<String> = env::var("ALLOW_PORT_RANGE").unwrap_or("22/22".to_string()).split(",").into_iter().map(|s| s.to_string()).collect();
+    let allow_port_range: Vec<String> = env::var("ALLOW_PORT_RANGE").unwrap_or("TCP:22/22".to_string()).split(",").into_iter().map(|s| s.to_string()).collect();
     let allow_valid_time_duration = env::var("ALLOW_VALID_TIME_DURATION").unwrap_or("86400".to_string()).parse::<u64>().unwrap();
     
     let allow_user_list: AllowUserList = serde_json::from_str(&allow_user_pass)?;
