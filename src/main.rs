@@ -38,7 +38,9 @@ struct AppState {
     aliyun_access_secret: String,
     aliyun_region_id: String,
     aliyun_vpc_sg_id: String,
-    allow_time_diff: u64
+    allow_time_diff: u64,
+    allow_port_range: Vec<String>,
+    allow_valid_time_duration: u64,
 }
 
 type AllowUserList = HashMap<String, String>;
@@ -109,16 +111,12 @@ async fn white_list_me(
         &state.aliyun_access_secret, 
         &state.aliyun_region_id
     );
-    // check ip is in whitelist
-    let whitelist = aly.get_whitelist(&state.aliyun_vpc_sg_id).await;
-    let is_success_add = aly.add_whitelist(
-        &state.aliyun_vpc_sg_id,
-        &secure_ip.0.to_string()
-    ).await;
+    let duration = chrono::Duration::seconds(state.allow_valid_time_duration as i64);
+    let is_success_add = aly.add_whitelist(&state.aliyun_vpc_sg_id, &secure_ip.0.to_string(), state.allow_port_range, duration).await;
     if is_success_add.is_err() {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string());
+        return (StatusCode::INTERNAL_SERVER_ERROR, is_success_add.err().unwrap().to_string());
     }
-    (StatusCode::OK, "OK".to_string())
+    (StatusCode::OK, is_success_add.unwrap())
 }
 
 #[tokio::main]
@@ -143,8 +141,20 @@ async fn main() -> Result<()>{
     let aliyun_region_id = env::var("ALIYUN_REGION_ID").unwrap_or("cn-zhangjiakou".to_string());
     let allow_user_pass = env::var("ALLOW_USER_PASS").unwrap_or("{}".to_string());
     let allow_time_diff = env::var("ALLOW_TIME_DIFF").unwrap_or("300".to_string()).parse::<u64>().unwrap();
+    // let allow_ports: Vec<u16> = env::var("ALLOW_PORTS").unwrap_or("22".to_string()).split(",").into_iter().map(|s| s.parse::<u16>().unwrap()).collect();
+    // todo 要考虑一下 IpProtocol, 应该改成TCP:PORT/PORT
+    let allow_port_range: Vec<String> = env::var("ALLOW_PORT_RANGE").unwrap_or("22/22".to_string()).split(",").into_iter().map(|s| s.to_string()).collect();
+    let allow_valid_time_duration = env::var("ALLOW_VALID_TIME_DURATION").unwrap_or("86400".to_string()).parse::<u64>().unwrap();
     
     let allow_user_list: AllowUserList = serde_json::from_str(&allow_user_pass)?;
+
+    // for port in allow_ports {
+    //     let t = format!("{}/{}", port, port);
+    //     // check "port/port" in allow_port_range then add it to allow_port_range
+    //     if !allow_port_range.contains(&t) {
+    //         allow_port_range.push(t);
+    //     }
+    // }
 
     let state = AppState {
         allow_user_list,
@@ -153,6 +163,8 @@ async fn main() -> Result<()>{
         aliyun_region_id,
         aliyun_vpc_sg_id,
         allow_time_diff,
+        allow_port_range,
+        allow_valid_time_duration
     };
 
     println!("Listening on http://{}", listen.as_str());
