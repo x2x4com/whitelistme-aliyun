@@ -20,6 +20,7 @@ use hex::ToHex;
 use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
 use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
+use std::sync::Arc;
 
 mod js;
 mod aliyun;
@@ -166,6 +167,16 @@ async fn main() -> Result<()>{
         allow_port_range,
         allow_valid_time_duration
     };
+
+    let state_arc = Arc::new(state.clone());
+
+    let _ = tokio::spawn(async move {
+        println!("Starting whitelistme cleanup task...");
+        let state = state_arc.clone();
+        loop {
+            
+        }
+    });
 
     println!("Listening on http://{}", listen.as_str());
     // build our application with a single route
