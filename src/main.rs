@@ -56,21 +56,79 @@ async fn white_list_me_form() -> Html<String> {
         <html>
             <head>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Whitelist Me</title>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        background-color: #f4f4f4;
+                        margin: 0;
+                        padding: 0;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                    }}
+
+                    .login-container {{
+                        background-color: #fff;
+                        padding: 20px;
+                        border-radius: 5px;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        width: 100%;
+                        max-width: 320px;
+                        margin: 0 auto;
+                    }}
+
+                    .login-container h2 {{
+                        text-align: center;
+                        color: #333;
+                    }}
+
+                    .form-group {{
+                        margin-bottom: 15px;
+                    }}
+
+                    .form-group label {{
+                        display: block;
+                        margin-bottom: 5px;
+                    }}
+
+                    .form-group input {{
+                        width: 100%;
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        border-radius: 3px;
+                        box-sizing: border-box;
+                    }}
+
+                    .form-group input[type="submit"] {{
+                        background-color: #5cb85c;
+                        color: white;
+                        cursor: pointer;
+                        border: none;
+                    }}
+
+                    .form-group input[type="submit"]:hover {{
+                        background-color: #4cae4c;
+                    }}
+                </style>
             </head>
             <body>
-                <div id="form_body">
+                <div id="form_body" class="login-container">
                     <form action="/whitelistme" method="post" id="whitelistme">
-                        <label for="name">
-                            Name:
-                            <input type="text" name="name" id="name">
-                        </label>
-
-                        <label>
-                            Password:
-                            <input type="password" name="password" id="password">
-                        </label>
-
-                        <button type="submit">Submit</button>
+                        <div class="form-group">
+                            <label for="username">User:</label>
+                            <input type="text" name="name" id="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password:</label>
+                            <input type="password" name="password" id="password" required>
+                        </div>
+                        <div class="form-group">
+                            <button type="submit">Submit</button>
+                        </div>
                     </form>
                 </div>
             </body>
@@ -81,8 +139,8 @@ async fn white_list_me_form() -> Html<String> {
 }
 
 async fn white_list_me(
-    _insecure_ip: InsecureClientIp, 
-    secure_ip: SecureClientIp,
+    insecure_ip: InsecureClientIp, 
+    _secure_ip: SecureClientIp,
     State(state): State<AppState>, 
     Json(input): Json<WhitelistMeJson>,
 ) -> (StatusCode, String) {
@@ -116,7 +174,7 @@ async fn white_list_me(
         &state.aliyun_region_id
     );
     let duration = chrono::Duration::seconds(state.allow_valid_time_duration as i64);
-    let is_success_add = aly.add_whitelist(&state.aliyun_vpc_sg_id, &secure_ip.0.to_string(), state.allow_port_range, duration).await;
+    let is_success_add = aly.add_whitelist(&state.aliyun_vpc_sg_id, &insecure_ip.0.to_string(), state.allow_port_range, duration).await;
     if is_success_add.is_err() {
         return (StatusCode::INTERNAL_SERVER_ERROR, is_success_add.err().unwrap().to_string());
     }
