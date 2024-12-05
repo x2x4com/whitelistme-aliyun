@@ -17,9 +17,9 @@ pub struct AliyunCFG {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct RequestAuthorizeSecurityGroup {
-    region_id: String,
-    security_group_id: String,
-    permissions: Vec<SecurityGroupPermission>
+    pub region_id: String,
+    pub security_group_id: String,
+    pub permissions: Vec<SecurityGroupPermission>
 }
 
 impl RequestAuthorizeSecurityGroup {
@@ -59,16 +59,16 @@ impl RequestAuthorizeSecurityGroup {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct RequestModifySecurityGroupRule {
-    region_id: String,
-    security_group_id: String,
-    security_group_rule_id: String,
-    policy: String,
-    description: String,
-    priority: i32,
-    ipv6_source_cidr_ip: String,
-    port_range: String,
-    source_cidr_ip: String,
-    ip_protocol: String,
+    pub region_id: String,
+    pub security_group_id: String,
+    pub security_group_rule_id: String,
+    pub policy: String,
+    pub description: String,
+    pub priority: i32,
+    pub ipv6_source_cidr_ip: String,
+    pub port_range: String,
+    pub source_cidr_ip: String,
+    pub ip_protocol: String,
 }
 
 impl RequestModifySecurityGroupRule {
@@ -122,20 +122,20 @@ impl RequestModifySecurityGroupRule {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ResponseDescribeSecurityGroupAttribute {
-    description: String,
-    vpc_id: String,
-    request_id: String,
-    security_group_name: String,
-    security_group_id: String,
-    inner_access_policy: String,
-    region_id: String,
-    permissions: DescribeSecurityGroupAttributePermissions
+    pub description: String,
+    pub vpc_id: String,
+    pub request_id: String,
+    pub security_group_name: String,
+    pub security_group_id: String,
+    pub inner_access_policy: String,
+    pub region_id: String,
+    pub permissions: DescribeSecurityGroupAttributePermissions
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DescribeSecurityGroupAttributePermissions {
-    permission: Vec<SecurityGroupPermission>,
+    pub permission: Vec<SecurityGroupPermission>,
 }
 
 impl DescribeSecurityGroupAttributePermissions {
@@ -163,14 +163,14 @@ impl DescribeSecurityGroupAttributePermissions {
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct SecurityGroupPermission {
-    policy: String,
-    description: String,
-    priority: i32,
-    ipv6_source_cidr_ip: String,
-    port_range: String,
-    source_cidr_ip: String,
-    ip_protocol: String,
-    security_group_rule_id: String,
+    pub policy: String,
+    pub description: String,
+    pub priority: i32,
+    pub ipv6_source_cidr_ip: String,
+    pub port_range: String,
+    pub source_cidr_ip: String,
+    pub ip_protocol: String,
+    pub security_group_rule_id: String,
 }
 
 impl SecurityGroupPermission {
@@ -207,10 +207,24 @@ impl SecurityGroupPermission {
     }
 
     pub fn is_expired(&self) -> bool {
-        let rfc3339_str = &self.description[0..8];
-        println!("rfc3339_str: {}", rfc3339_str);
-        let valid_to = chrono::DateTime::parse_from_rfc3339(rfc3339_str).unwrap().with_timezone(&Utc);
-        chrono::Utc::now() > valid_to
+        if &self.description.len() < &10 {
+            return false;
+        }
+        let msg = &self.description[0..9];
+        if msg != "valid_to:" {
+            return false;
+        }
+        let rfc3339_str = &self.description[9..];
+        //println!("rfc3339_str: {}", rfc3339_str);
+        // let valid_to = chrono::DateTime::parse_from_rfc3339(rfc3339_str).unwrap().with_timezone(&Utc);
+        let valid_to = chrono::DateTime::parse_from_rfc3339(rfc3339_str);
+        if valid_to.is_err() {
+            return false;
+        }
+        let valid_to = valid_to.unwrap().with_timezone(&Utc);
+        let now = chrono::Utc::now();
+        println!("{} valid_to: {}, now: {}", self.security_group_rule_id, valid_to, now);
+        now > valid_to
     }
 
     pub fn set_expired(&mut self, duration: Duration) {
@@ -230,18 +244,16 @@ impl AliyunCFG {
     }
 
     pub async fn add_whitelist(&self, sg_id: &str, ip: &str, port_range: Vec<String> ,duration: Duration) -> Result<String> {
-        /*
         if ip == "127.0.0.1" {
-            return Ok(());
+            return Ok("127.0.0.1 do nothing".to_string());
         }
-        */
         // for test
-        let ip = "58.37.167.90";
+        // let ip = "58.37.167.90";
         let mut res_str = "Done ".to_string();
         // 一个ip一定会存在多个记录
         // check if ip is already in whitelist
         // let mut permissions: Vec<SecurityGroupPermission>;
-        let perms = self.get_whitelist(sg_id, ip).await?;
+        let perms = self.get_whitelist_with_ip(sg_id, ip).await?;
         // 不存在的添加
         let mut existed = Vec::new();
         let _: Vec<_> = perms.iter().map(|p| {
@@ -258,6 +270,23 @@ impl AliyunCFG {
             }
             let port = port_split[1].to_string();
             let ip_protocol = port_split[0].to_string().to_uppercase();
+            // 初始化情况，perms = 0 
+            if perms.len() == 0 {
+                let ex = format!("{ip}:{ip_protocol}:{port}");
+                if !existed.contains(&ex) {
+                    res_str += &format!("Add {ex} ");
+                    let mut p = SecurityGroupPermission::new(
+                        "Accept",
+                        "",
+                        ip,
+                        &port,
+                        &ip_protocol
+                    );
+                    p.set_expired(duration);
+                    permissions.push(p);
+                    existed.push(ex);
+                }
+            }
             for perm in &perms {
                 if perm.is_match(ip, &port) {
                     // 有，更新
@@ -326,20 +355,30 @@ impl AliyunCFG {
         Ok(res_str)
     }
 
-    pub async fn clean_whitelist(&self, sg_id: &str, ip: &str) -> Result<()> {
-        todo!("Call aliyun api to del ip from whitelist")
+    pub async fn clean_whitelist(&self, sg_id: &str, rule_id: &str) -> Result<()> {
+        println!("clean_whitelist sg_id: {sg_id}, rule_id: {rule_id}");
+        let res = self.rpc_client.clone()
+            .version("2014-05-26")
+            .post("RevokeSecurityGroup")
+            .query([("RegionId", self.region_id.as_str()), ("SecurityGroupId", sg_id), ("SecurityGroupRuleId.1", rule_id)])
+            .text()
+            .await?;
+        println!("clean_whitelist result: {res}");
+        Ok(())
     }
 
-    pub async fn get_whitelist(&self, sg_id: &str, ip: &str) -> Result<Vec<SecurityGroupPermission>> {
-        // 这个函数应该返回2个集合，一个是存在的，一个是不存在的
+    pub async fn get_whitelist_with_ip(&self, sg_id: &str, ip: &str) -> Result<Vec<SecurityGroupPermission>> {
+        Ok(self.get_whitelist(sg_id).await?.permissions.search_sg_by_ip(ip))
+    }
+
+    pub async fn get_whitelist(&self, sg_id: &str) -> Result<ResponseDescribeSecurityGroupAttribute> {
         let result = &self.rpc_client.clone()
             .version("2014-05-26")
             .get("DescribeSecurityGroupAttribute")
             .query([("RegionId", self.region_id.as_str()), ("SecurityGroupId", sg_id)])
             .json::<ResponseDescribeSecurityGroupAttribute>()
             .await?;
-        // println!("{:?}", result);
-        Ok(result.permissions.search_sg_by_ip(ip))
+        Ok(result.to_owned())
     }
 
 }

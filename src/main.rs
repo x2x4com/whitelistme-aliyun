@@ -12,7 +12,7 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use serde::Deserialize;
-use std::env;
+use std::{env, thread};
 use anyhow::Result;
 use std::collections::HashMap;
 use sha1::{Sha1, Digest};
@@ -21,6 +21,8 @@ use axum_client_ip::{InsecureClientIp, SecureClientIp, SecureClientIpSource};
 use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use std::sync::Arc;
+use tokio::runtime::Runtime;
+use tokio::time::*;
 
 mod js;
 mod aliyun;
@@ -42,6 +44,7 @@ struct AppState {
     allow_time_diff: u64,
     allow_port_range: Vec<String>,
     allow_valid_time_duration: u64,
+    allow_cleanup_task_interval: u64,
 }
 
 type AllowUserList = HashMap<String, String>;
@@ -146,6 +149,7 @@ async fn main() -> Result<()>{
     // todo 要考虑一下 IpProtocol, 应该改成TCP:PORT/PORT
     let allow_port_range: Vec<String> = env::var("ALLOW_PORT_RANGE").unwrap_or("TCP:22/22".to_string()).split(",").into_iter().map(|s| s.to_string()).collect();
     let allow_valid_time_duration = env::var("ALLOW_VALID_TIME_DURATION").unwrap_or("86400".to_string()).parse::<u64>().unwrap();
+    let allow_cleanup_task_interval = env::var("ALLOW_CLEANUP_TASK_INTERVAL").unwrap_or("3600".to_string()).parse::<u64>().unwrap();
     
     let allow_user_list: AllowUserList = serde_json::from_str(&allow_user_pass)?;
 
@@ -165,18 +169,39 @@ async fn main() -> Result<()>{
         aliyun_vpc_sg_id,
         allow_time_diff,
         allow_port_range,
-        allow_valid_time_duration
+        allow_valid_time_duration,
+        allow_cleanup_task_interval
     };
 
     let state_arc = Arc::new(state.clone());
 
-    let _ = tokio::spawn(async move {
+    let _ = thread::spawn(move || {
         println!("Starting whitelistme cleanup task...");
         let state = state_arc.clone();
-        loop {
-            
-        }
+        let rt = Runtime::new().unwrap();
+        let aly = aliyun::AliyunCFG::new(
+            &state.aliyun_access_key, 
+            &state.aliyun_access_secret, 
+            &state.aliyun_region_id
+        );
+        rt.block_on(async move {
+            loop {
+                // println!("Cleanup task started...");
+                let result = aly.get_whitelist(&state.aliyun_vpc_sg_id).await;
+                if let Ok(whitelist) = result {
+                    let permissions = whitelist.permissions.permission;
+                    for permission in permissions {
+                        if permission.is_expired() {
+                            println!("Permission expired: {:?}", &permission.security_group_rule_id);
+                            let _ = aly.clean_whitelist(&state.aliyun_vpc_sg_id, &permission.security_group_rule_id).await;
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(state.allow_cleanup_task_interval)).await;
+            }
+        });
     });
+
 
     println!("Listening on http://{}", listen.as_str());
     // build our application with a single route
