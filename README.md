@@ -32,3 +32,8 @@ ALIYUN_ACCESS_KEY=abc ALIYUN_ACCESS_SECRET=xyz RUST_LOG=debug ALLOW_USER_PASS='{
 ```
 
 访问 http://your-ip:3000/
+
+build musl
+```
+cargo build --release --target x86_64-unknown-linux-musl --features vendored
+```

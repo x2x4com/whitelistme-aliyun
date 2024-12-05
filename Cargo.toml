@@ -23,3 +23,10 @@ rand = "0.8.5"
 ring = "0.17.8"
 base64 = "0.22.1"
 aliyun-openapi-core-rust-sdk = "1.1.0"
+openssl-sys = "*"
+openssl = "0.10.66"
+
+[features]
+# Force openssl to staticly link in the openssl library. Necessary when
+# cross compiling to x86_64-unknown-linux-musl.
+vendored = ["openssl-sys/vendored", "openssl/vendored"]
